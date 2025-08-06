@@ -17,20 +17,24 @@ def authorize_gsheet():
     return client.open_by_key(os.environ["GOOGLE_SHEET_ID"]).sheet1
 
 # Odeslání upozornění
-def send_email(subject, body):
-    EMAIL_ADDRESS = os.environ["EMAIL_ADDRESS"]
-    EMAIL_PASSWORD = os.environ["EMAIL_PASSWORD"]
-    TO_ADDRESS = os.environ["TO_ADDRESS"]
+def send_email_mailgun(subject, text):
+    MAILGUN_API_KEY = os.environ.get("MAILGUN_API_KEY")
+    MAILGUN_DOMAIN = os.environ.get("MAILGUN_DOMAIN")
+    TO_ADDRESS = os.environ.get("TO_ADDRESS")
 
-    msg = EmailMessage()
-    msg["Subject"] = subject
-    msg["From"] = EMAIL_ADDRESS
-    msg["To"] = TO_ADDRESS
-    msg.set_content(body)
+    response = requests.post(
+        f"https://api.mailgun.net/v3/{MAILGUN_DOMAIN}/messages",
+        auth=("api", MAILGUN_API_KEY),
+        data={
+            "from": f"LIDL Watchdog <mailgun@{MAILGUN_DOMAIN}>",
+            "to": [TO_ADDRESS],
+            "subject": subject,
+            "text": text,
+        },
+    )
 
-    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
-        smtp.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
-        smtp.send_message(msg)
+    if response.status_code != 200:
+        print("Chyba při odesílání e-mailu:", response.text)
 
 # Získání ceny z LIDL API
 def get_price_from_api(api_url):
@@ -94,7 +98,7 @@ def main():
 
         # Pokud se cena nenašla, produkt je pravděpodobně nedostupný
         if not price:
-            send_email(f"{name} je nedostupné", f"Odkaz: {product_url}")
+            send_email_mailgun(f"{name} je nedostupné", f"Odkaz: {product_url}")
             sheet.update_cell(i, 7, "Nedostupné")
             continue
 
@@ -112,7 +116,7 @@ def main():
             continue
 
         if price_float < stored_float:
-            send_email(f"{name} je ve slevě!", f"Nová cena: {price} Kč\nOdkaz: {product_url}")
+            send_email_mailgun(f"{name} je ve slevě!", f"Nová cena: {price} Kč\nOdkaz: {product_url}")
         elif price_float > stored_float:
             sheet.update_cell(i, 6, f"{price} Kč")  # aktualizace vyšší ceny
 
