@@ -10,11 +10,18 @@ from oauth2client.service_account import ServiceAccountCredentials
 
 # Připojení ke Google Sheets
 def authorize_gsheet():
-    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-    creds_json = json.loads(os.environ["GOOGLE_CREDENTIALS_JSON"])
-    creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_json, scope)
-    client = gspread.authorize(creds)
-    return client.open_by_key(os.environ["GOOGLE_SHEET_ID"]).sheet1
+    GOOGLE_CREDENTIALS_JSON = os.getenv("GOOGLE_CREDENTIALS_JSON")
+    GOOGLE_SHEET_ID = os.getenv("GOOGLE_SHEET_ID")
+
+    scopes = ['https://www.googleapis.com/auth/spreadsheets']
+    credentials = Credentials.from_service_account_info(
+        json.loads(GOOGLE_CREDENTIALS_JSON),
+        scopes=scopes
+    )
+
+    gc = gspread.authorize(credentials)
+    # Vrací první list v sešitu podle ID
+    return gc.open_by_key(GOOGLE_SHEET_ID).sheet1
 
 # Odeslání upozornění
 def send_email_mailgun(subject, text):
