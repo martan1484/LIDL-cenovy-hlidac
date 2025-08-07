@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 import smtplib
 from email.message import EmailMessage
 import gspread
-from oauth2client.service_account import ServiceAccountCredentials
+from google.oauth2.service_account import Credentials
 
 # Připojení ke Google Sheets
 def authorize_gsheet():
