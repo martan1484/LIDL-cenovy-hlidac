@@ -13,14 +13,18 @@ def authorize_gsheet():
     GOOGLE_CREDENTIALS_JSON = os.getenv("GOOGLE_CREDENTIALS_JSON")
     GOOGLE_SHEET_ID = os.getenv("GOOGLE_SHEET_ID")
 
+    # uložíme obsah proměnné jako originální soubor
+    creds_path = "/tmp/google_credentials.json"
+    with open(creds_path, "w", encoding="utf-8") as f:
+        f.write(GOOGLE_CREDENTIALS_JSON)
+
     scopes = ['https://www.googleapis.com/auth/spreadsheets']
-    credentials = Credentials.from_service_account_info(
-        json.loads(GOOGLE_CREDENTIALS_JSON),
+    credentials = Credentials.from_service_account_file(
+        creds_path,
         scopes=scopes
     )
 
     gc = gspread.authorize(credentials)
-    # Vrací první list v sešitu podle ID
     return gc.open_by_key(GOOGLE_SHEET_ID).sheet1
 
 # Odeslání upozornění
