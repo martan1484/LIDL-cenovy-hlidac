@@ -8,6 +8,7 @@ on:
 jobs:
   run:
     runs-on: ubuntu-latest
+    environment: production  # << přidáno – název prostředí s uloženým JSON
     steps:
       - uses: actions/checkout@v4
       - name: Set up Python
