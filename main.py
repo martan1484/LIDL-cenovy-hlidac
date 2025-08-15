@@ -75,61 +75,82 @@ def main():
     sheet = authorize_gsheet()
     rows = sheet.get_all_values()[1:]  # vynecháme hlavičku
 
-    for i, row in enumerate(rows, start=2):  # Google Sheets má 1-based indexing
+    for i, row in enumerate(rows, start=2):
         name = row[0]
-        product_url = row[1]
-        api_url = row[2]
+        product_url = row[1].strip()
+        api_url = row[2].strip()
         interval_days = int(row[3]) if row[3] else 7
         last_checked = datetime.strptime(row[4], "%Y-%m-%d") if row[4] else datetime(2000, 1, 1)
         stored_price = row[5].replace(" Kč", "").replace(",", ".") if row[5] else ""
         status = row[6] if len(row) > 6 else ""
 
+        # 0) Kontrola intervalu
         if (datetime.now() - last_checked).days < interval_days:
-            continue  # není čas ještě kontrolovat
+            continue
 
-        # Zjisti API url pokud není
-        if not api_url:
-            api_url = extract_api_from_html(product_url)
-            if api_url:
-                sheet.update_cell(i, 3, api_url)
+        price = None
+        available = True  # předpokládáme dostupnost
 
-        # Získání ceny
-        price = get_price_from_api(api_url) if api_url else None
+        # 1) Pokud existuje API URL ve sloupci C, zkus ho použít
+        if api_url:
+            price = get_price_from_api(api_url)
 
-        # Pokud se přes API nepovedlo, zkus HTML
+        # 2) Pokud API nevrátilo cenu, zkus z HTML získat API URL a znovu použít
         if not price:
-            html = requests.get(product_url).text
-            soup = BeautifulSoup(html, "html.parser")
-            tag = soup.find("span", {"class": "m-price__price"})
-            if tag:
-                price = tag.get_text(strip=True).replace('\xa0', ' ').replace("Kč", "").strip()
+            extracted_api = extract_api_from_html(product_url)
+            if extracted_api and extracted_api != api_url:
+                sheet.update_cell(i, 3, extracted_api)
+                api_url = extracted_api
+                price = get_price_from_api(api_url)
 
-        # Zapsání datumu poslední kontroly
-        sheet.update_cell(i, 5, datetime.now().strftime("%Y-%m-%d"))
-
-        # Pokud se cena nenašla, produkt je pravděpodobně nedostupný
+        # 3) Pokud ani teď cena není, zkus přímo vyčíst z HTML stránky
         if not price:
+            try:
+                html = requests.get(product_url).text
+                soup = BeautifulSoup(html, "html.parser")
+                tag = soup.find("span", {"class": "m-price__price"})
+                if tag:
+                    price = tag.get_text(strip=True).replace('\xa0', ' ').replace("Kč", "").strip()
+                else:
+                    available = False
+            except:
+                available = False
+
+        # 4) Pokud není dostupné
+        if not available or not price:
             send_email_mailgun(f"{name} je nedostupné", f"Odkaz: {product_url}")
             sheet.update_cell(i, 7, "Nedostupné")
+            sheet.update_cell(i, 5, datetime.now().strftime("%Y-%m-%d"))
             continue
+        else:
+            sheet.update_cell(i, 7, "")  # vyčistíme status "Nedostupné"
 
-        sheet.update_cell(i, 7, "")  # smažeme případné "Nedostupné"
-
-        # První cena – uložíme
+        # 5) Pokud nemáme uloženou cenu, uložíme aktuální
         if not stored_price:
             sheet.update_cell(i, 6, f"{price} Kč")
+            sheet.update_cell(i, 5, datetime.now().strftime("%Y-%m-%d"))
             continue
 
+        # 6) Porovnání cen
         try:
             price_float = float(price.replace(",", "."))
             stored_float = float(stored_price)
-        except:
+        except ValueError:
+            sheet.update_cell(i, 5, datetime.now().strftime("%Y-%m-%d"))
             continue
 
         if price_float < stored_float:
-            send_email_mailgun(f"{name} je ve slevě!", f"Nová cena: {price} Kč\nOdkaz: {product_url}")
+            send_email_mailgun(
+                f"{name} je ve slevě!",
+                f"Nová cena: {price} Kč\nOdkaz: {product_url}"
+            )
+            sheet.update_cell(i, 6, f"{price} Kč")
+
         elif price_float > stored_float:
-            sheet.update_cell(i, 6, f"{price} Kč")  # aktualizace vyšší ceny
+            sheet.update_cell(i, 6, f"{price} Kč")
+
+        # 7) Na konci zapíšeme datum poslední kontroly
+        sheet.update_cell(i, 5, datetime.now().strftime("%Y-%m-%d"))
 
 if __name__ == "__main__":
     main()
